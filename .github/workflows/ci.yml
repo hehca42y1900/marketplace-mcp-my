@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          # One Windows leg (single Python) to catch platform-specific breakage
+          # without blowing up the matrix.
+          - os: windows-latest
+            python-version: "3.12"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pyyaml httpx "mcp>=1.2.0"
+      - name: Run tests (offline, no tokens)
+        # -u clears any inherited creds so tests run in a clean env.
+        # Includes the safety-catalog lint: fails if any PUT/PATCH/DELETE is
+        # marked safety:read (which would bypass the write gate in call_method).
+        shell: bash
+        run: env -u OZON_CLIENT_ID -u OZON_API_KEY -u WB_API_TOKEN python -m pytest tests/ -q
+      - name: Selfcheck all three servers
+        shell: bash
+        run: |
+          python serve.py wb --selfcheck
+          python serve.py ozon --selfcheck
+          python serve.py ozon-perf --selfcheck
